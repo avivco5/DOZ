@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Friendly Direction Warning - Admin</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Friendly Direction Warning - Admin</h1>
+    <div id="status">WebSocket: connecting</div>
+  </header>
+
+  <main>
+    <section class="panel map-panel">
+      <canvas id="arenaCanvas" width="1000" height="600"></canvas>
+    </section>
+
+    <section class="panel controls-panel">
+      <h2>Controls</h2>
+
+      <div class="control-row">
+        <label>
+          <input type="checkbox" id="useSimPositions" checked>
+          use_sim_positions
+        </label>
+      </div>
+
+      <div class="control-row">
+        <button id="randomizeBtn">Randomize positions</button>
+        <button id="resetBtn">Reset world</button>
+      </div>
+
+      <div class="control-row">
+        <button id="pauseBtn">Pause sim</button>
+        <button id="resumeBtn">Resume sim</button>
+      </div>
+
+      <div class="control-row slider-row">
+        <label for="rangeSlider">max_range_m</label>
+        <input type="range" id="rangeSlider" min="2" max="50" step="0.5" value="15">
+        <span id="rangeValue">15.0</span>
+      </div>
+
+      <div class="control-row slider-row">
+        <label for="coneSlider">cone_half_angle_deg</label>
+        <input type="range" id="coneSlider" min="1" max="30" step="0.5" value="6">
+        <span id="coneValue">6.0</span>
+      </div>
+
+      <div class="control-row slider-row">
+        <label for="qualitySlider">quality_threshold</label>
+        <input type="range" id="qualitySlider" min="0" max="100" step="1" value="35">
+        <span id="qualityValue">35</span>
+      </div>
+
+      <div class="control-row slider-row">
+        <label for="speedSlider">sim_speed_mps</label>
+        <input type="range" id="speedSlider" min="0" max="2" step="0.05" value="0.4">
+        <span id="speedValue">0.40</span>
+      </div>
+
+      <div class="control-row">
+        <div id="arenaInfo">Arena: 50.0m x 30.0m</div>
+      </div>
+    </section>
+
+    <section class="panel table-panel">
+      <h2>Live Telemetry</h2>
+      <table id="telemetryTable">
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>online</th>
+            <th>yaw</th>
+            <th>pitch</th>
+            <th>roll</th>
+            <th>quality</th>
+            <th>last_seen_ms_ago</th>
+            <th>alert</th>
+            <th>intensity</th>
+            <th>pos_source</th>
+            <th>x_m</th>
+            <th>y_m</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "imu_icm20948.c"
+        "imu_mpu6050.c"
+        "fusion_madgwick.c"
+        "net_udp.c"
+        "packet_proto.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        driver
+        esp_event
+        esp_netif
+        esp_wifi
+        lwip
+        nvs_flash
+)
