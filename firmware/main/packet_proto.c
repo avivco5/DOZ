@@ -39,7 +39,7 @@ size_t fdw_pack_telemetry(uint8_t *out, size_t cap, const fdw_telemetry_t *pkt) 
     size_t i = 0;
     out[i++] = FDW_MAGIC0;
     out[i++] = FDW_MAGIC1;
-    out[i++] = FDW_VERSION;
+    out[i++] = FDW_TELEMETRY_VERSION;
     out[i++] = FDW_MSG_TELEMETRY;
     out[i++] = pkt->player_id;
 
@@ -69,6 +69,14 @@ size_t fdw_pack_telemetry(uint8_t *out, size_t cap, const fdw_telemetry_t *pkt) 
     i += 2;
     out[i++] = pkt->flags;
 
+    write_u32_le(&out[i], (uint32_t)pkt->gps_lat_e7);
+    i += 4;
+    write_u32_le(&out[i], (uint32_t)pkt->gps_lon_e7);
+    i += 4;
+    write_u32_le(&out[i], (uint32_t)pkt->gps_alt_cm);
+    i += 4;
+    out[i++] = pkt->gps_quality;
+
     uint16_t crc = fdw_crc16_ccitt(out, i);
     write_u16_le(&out[i], crc);
     i += 2;
@@ -83,7 +91,7 @@ bool fdw_unpack_alert(const uint8_t *data, size_t len, fdw_alert_t *out) {
     if (data[0] != FDW_MAGIC0 || data[1] != FDW_MAGIC1) {
         return false;
     }
-    if (data[2] != FDW_VERSION || data[3] != FDW_MSG_ALERT) {
+    if (data[2] != FDW_ALERT_VERSION || data[3] != FDW_MSG_ALERT) {
         return false;
     }
 

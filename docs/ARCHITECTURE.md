@@ -89,16 +89,22 @@ Failsafe rules:
 
 ### Packet Rates and Bandwidth
 Assumptions:
-- Telemetry packet size: 32 bytes.
+- Telemetry packet size:
+  - v1 (legacy, no GPS): 32 bytes.
+  - v2 (GPS-capable): 45 bytes.
 - Alert packet size: 11 bytes.
 - 20 Hz telemetry and 20 Hz alert updates.
 
 Per node approx:
-- Uplink: `32 * 20 = 640 B/s`.
+- Uplink:
+  - v1: `32 * 20 = 640 B/s`
+  - v2: `45 * 20 = 900 B/s`
 - Downlink: `11 * 20 = 220 B/s`.
 
 For 10 nodes total approx:
-- Uplink: 6.4 KB/s.
+- Uplink:
+  - v1: 6.4 KB/s
+  - v2: 9.0 KB/s
 - Downlink: 2.2 KB/s.
 
 ### Loss and Jitter Handling

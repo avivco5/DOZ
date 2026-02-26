@@ -47,6 +47,7 @@ class SimNode:
         server_port: int,
         local_port: int,
         send_pos: bool,
+        send_gps: bool,
         rate_hz: float,
     ) -> None:
         self.player_id = player_id
@@ -54,6 +55,7 @@ class SimNode:
         self.server_port = server_port
         self.local_port = local_port
         self.send_pos = send_pos
+        self.send_gps = send_gps
         self.rate_hz = rate_hz
 
         self.seq = 0
@@ -90,6 +92,19 @@ class SimNode:
         y = center_y + radius * math.sin(omega * t)
         return int(round(x * 100.0)), int(round(y * 100.0)), 80
 
+    def _sim_gps(self, t: float) -> tuple[float | None, float | None, float | None, int]:
+        if not self.send_gps:
+            return None, None, None, 0
+
+        # Small player-specific motion around a base point (Tel Aviv area by default).
+        base_lat = 32.0853 + (self.player_id - 1) * 0.00035
+        base_lon = 34.7818 + (self.player_id - 1) * 0.00028
+        wobble = 0.00006
+        lat = base_lat + wobble * math.cos(0.02 * t + self._yaw_phase)
+        lon = base_lon + wobble * math.sin(0.018 * t + self._yaw_phase)
+        alt_m = 28.0 + 2.0 * math.sin(0.011 * t + self._yaw_phase)
+        return lat, lon, alt_m, 90
+
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
         await loop.create_datagram_endpoint(
@@ -108,6 +123,7 @@ class SimNode:
             timestamp_ms = int(now * 1000)
             yaw, pitch, roll = self._sim_pose(now)
             pos_x_cm, pos_y_cm, pos_quality = self._sim_position_cm(now)
+            gps_lat_deg, gps_lon_deg, gps_alt_m, gps_quality = self._sim_gps(now)
 
             telemetry = TelemetryPacket(
                 player_id=self.player_id,
@@ -122,6 +138,10 @@ class SimNode:
                 pos_quality=pos_quality,
                 battery_mv=3700,
                 flags=0,
+                gps_lat_deg=gps_lat_deg,
+                gps_lon_deg=gps_lon_deg,
+                gps_alt_m=gps_alt_m,
+                gps_quality=gps_quality,
             )
             payload = encode_telemetry(telemetry)
             self.transport.sendto(payload, (self.server_ip, self.server_port))
@@ -138,6 +158,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--local-port-base", type=int, default=12000, help="Base local UDP port")
     parser.add_argument("--rate-hz", type=float, default=20.0, help="Telemetry send rate")
     parser.add_argument("--send-pos", action="store_true", help="Send synthetic positions")
+    parser.add_argument("--send-gps", action="store_true", help="Send synthetic GPS fix")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
     return parser.parse_args()
 
@@ -157,6 +178,7 @@ async def amain() -> None:
             server_port=args.server_port,
             local_port=args.local_port_base + idx,
             send_pos=args.send_pos,
+            send_gps=args.send_gps,
             rate_hz=args.rate_hz,
         )
         for idx, pid in enumerate(player_ids)

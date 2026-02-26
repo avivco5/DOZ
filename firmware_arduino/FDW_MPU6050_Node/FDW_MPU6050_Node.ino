@@ -62,12 +62,19 @@ static const uint32_t AUTO_RECENTER_DELAY_MS = 1500;
 // ---------------- Protocol constants ----------------
 static const uint8_t FDW_MAGIC0 = 0x46; // 'F'
 static const uint8_t FDW_MAGIC1 = 0x44; // 'D'
-static const uint8_t FDW_VERSION = 0x01;
+static const uint8_t FDW_ALERT_VERSION = 0x01;
+static const uint8_t FDW_TELEMETRY_VERSION = 0x02;
 static const uint8_t FDW_MSG_TELEMETRY = 0x01;
 static const uint8_t FDW_MSG_ALERT = 0x02;
 
-static const size_t FDW_TELEMETRY_SIZE = 32;
+static const size_t FDW_TELEMETRY_SIZE = 45;
 static const size_t FDW_ALERT_SIZE = 11;
+
+// GPS telemetry fields (WGS84): set quality > 0 when valid fix is available.
+static const int32_t GPS_LAT_E7 = 0;
+static const int32_t GPS_LON_E7 = 0;
+static const int32_t GPS_ALT_CM = 0;
+static const uint8_t GPS_QUALITY = 0;
 
 static const uint8_t FLAG_IMU_ONLY_MODE = (1u << 0);
 static const uint8_t FLAG_AUTO_RECENTER_DONE = (1u << 1);
@@ -391,7 +398,7 @@ static void sendTelemetry() {
   size_t i = 0;
   pkt[i++] = FDW_MAGIC0;
   pkt[i++] = FDW_MAGIC1;
-  pkt[i++] = FDW_VERSION;
+  pkt[i++] = FDW_TELEMETRY_VERSION;
   pkt[i++] = FDW_MSG_TELEMETRY;
   pkt[i++] = PLAYER_ID;
 
@@ -422,6 +429,14 @@ static void sendTelemetry() {
 
   pkt[i++] = flags;
 
+  write_u32_le(&pkt[i], (uint32_t)GPS_LAT_E7);
+  i += 4;
+  write_u32_le(&pkt[i], (uint32_t)GPS_LON_E7);
+  i += 4;
+  write_u32_le(&pkt[i], (uint32_t)GPS_ALT_CM);
+  i += 4;
+  pkt[i++] = GPS_QUALITY;
+
   uint16_t crc = crc16_ccitt_false(pkt, i);
   write_u16_le(&pkt[i], crc);
   i += 2;
@@ -448,7 +463,7 @@ static void pollAlertPacket() {
   if ((size_t)size != FDW_ALERT_SIZE) return;
 
   if (buf[0] != FDW_MAGIC0 || buf[1] != FDW_MAGIC1) return;
-  if (buf[2] != FDW_VERSION || buf[3] != FDW_MSG_ALERT) return;
+  if (buf[2] != FDW_ALERT_VERSION || buf[3] != FDW_MSG_ALERT) return;
 
   uint16_t recv_crc = read_u16_le(&buf[FDW_ALERT_SIZE - 2]);
   uint16_t calc_crc = crc16_ccitt_false(buf, FDW_ALERT_SIZE - 2);

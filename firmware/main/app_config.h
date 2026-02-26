@@ -35,3 +35,14 @@
 #define TELEMETRY_RATE_HZ 20
 #define GYRO_CALIBRATION_MS 2000
 #define MAG_EXPECTED_UT 50.0f
+
+/*
+ * GPS telemetry (protocol v2):
+ * - Set GPS_ENABLED=1 and feed real values into these fields (from your GPS module code).
+ * - Defaults keep GPS disabled and send gps_quality=0.
+ */
+#define GPS_ENABLED 0
+#define GPS_LAT_E7 0       /* latitude * 1e7 */
+#define GPS_LON_E7 0       /* longitude * 1e7 */
+#define GPS_ALT_CM 0       /* altitude in cm */
+#define GPS_QUALITY 0      /* 0..100 */

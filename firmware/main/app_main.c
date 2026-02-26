@@ -336,6 +336,10 @@ void app_main(void) {
             .pos_quality = 0,
             .battery_mv = 3700,
             .flags = flags,
+            .gps_lat_e7 = GPS_ENABLED ? GPS_LAT_E7 : 0,
+            .gps_lon_e7 = GPS_ENABLED ? GPS_LON_E7 : 0,
+            .gps_alt_cm = GPS_ENABLED ? GPS_ALT_CM : 0,
+            .gps_quality = GPS_ENABLED ? (uint8_t)GPS_QUALITY : 0,
         };
 
         uint8_t out_buf[FDW_TELEMETRY_PACKET_SIZE] = {0};

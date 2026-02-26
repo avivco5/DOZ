@@ -13,7 +13,7 @@
     <div class="brand">
       <p class="eyebrow">Friendly Direction Warning</p>
       <h1>Tactical Operations Console</h1>
-      <p class="subtitle">Directional safety telemetry and live situational awareness</p>
+      <p class="subtitle">Live operational tracking, alerting, and telemetry</p>
     </div>
     <div class="topbar-right">
       <div id="clockUtc" class="clock">UTC --:--:--</div>
@@ -44,11 +44,12 @@
     </article>
   </section>
 
-  <main>
+  <main class="console-grid">
     <section class="panel map-panel">
       <div class="panel-head">
         <h2>Operational Arena</h2>
         <div class="view-toggles">
+          <a class="toggle-link" href="/3d" target="_blank" rel="noopener noreferrer">Open 3D Ops</a>
           <label class="toggle-chip">
             <input type="checkbox" id="photoToggle" checked>
             <span>Aerial Layer</span>
@@ -64,73 +65,121 @@
         <canvas id="arenaCanvas" width="1000" height="600"></canvas>
         <div class="arena-overlay-glow"></div>
       </div>
-      <p id="terrainSource" class="terrain-source">Terrain source: loading...</p>
+
+      <div class="map-footer">
+        <p id="terrainSource" class="terrain-source">Terrain source: loading...</p>
+        <p id="arenaInfo" class="arena-info">Arena: 50.0m x 30.0m</p>
+      </div>
     </section>
 
-    <section class="panel controls-panel">
-      <h2>Control Surface</h2>
+    <aside class="right-column">
+      <section class="panel players-panel">
+        <div class="panel-head compact-head">
+          <h2>Players</h2>
+          <span id="playersOnlineStat" class="tiny-pill">0/0 online</span>
+        </div>
+        <div id="playersList" class="players-list"></div>
+      </section>
 
-      <div class="control-row">
-        <label>
-          <input type="checkbox" id="useSimPositions" checked>
-          Use simulated positions
-        </label>
-      </div>
+      <section class="panel telemetry-panel">
+        <div class="panel-head compact-head">
+          <h2>Telemetry</h2>
+          <span id="selectedPlayerLabel" class="tiny-pill">none</span>
+        </div>
+        <div id="telemetryDetail" class="telemetry-detail empty">Select a player to view detailed telemetry</div>
+      </section>
 
-      <div class="control-row">
-        <button id="randomizeBtn">Randomize positions</button>
-        <button id="resetBtn">Reset world</button>
-      </div>
+      <section class="panel alerts-panel">
+        <div class="panel-head compact-head">
+          <h2>Alerts</h2>
+          <span id="activeAlertsStat" class="tiny-pill alert">0 active</span>
+        </div>
+        <div id="activeAlertsList" class="alerts-active empty">No active alerts</div>
+        <div class="sub-divider"></div>
+        <div id="alertsHistoryList" class="alerts-history empty">No alert history yet</div>
+      </section>
 
-      <div class="control-row">
-        <button id="pauseBtn">Pause sim</button>
-        <button id="resumeBtn">Resume sim</button>
-      </div>
+      <section class="panel controls-panel">
+        <div class="panel-head compact-head">
+          <h2>Control Surface</h2>
+        </div>
 
-      <div class="control-row slider-row">
-        <label for="rangeSlider">Max range (m)</label>
-        <input type="range" id="rangeSlider" min="2" max="50" step="0.5" value="15">
-        <span id="rangeValue">15.0</span>
-      </div>
+        <div class="control-row">
+          <label>
+            <input type="checkbox" id="useSimPositions" checked>
+            Use simulated positions
+          </label>
+        </div>
 
-      <div class="control-row slider-row">
-        <label for="coneSlider">Cone half-angle (deg)</label>
-        <input type="range" id="coneSlider" min="1" max="30" step="0.5" value="6">
-        <span id="coneValue">6.0</span>
-      </div>
+        <div class="control-row">
+          <button id="randomizeBtn">Randomize positions</button>
+          <button id="resetBtn">Reset world</button>
+        </div>
 
-      <div class="control-row slider-row">
-        <label for="qualitySlider">Quality threshold</label>
-        <input type="range" id="qualitySlider" min="0" max="100" step="1" value="35">
-        <span id="qualityValue">35</span>
-      </div>
+        <div class="control-row">
+          <button id="pauseBtn">Pause sim</button>
+          <button id="resumeBtn">Resume sim</button>
+        </div>
 
-      <div class="control-row slider-row">
-        <label for="speedSlider">Simulation speed (m/s)</label>
-        <input type="range" id="speedSlider" min="0" max="2" step="0.05" value="0.4">
-        <span id="speedValue">0.40</span>
-      </div>
+        <div class="control-row slider-row">
+          <label for="rangeSlider">Max range (m)</label>
+          <input type="range" id="rangeSlider" min="2" max="50" step="0.5" value="15">
+          <span id="rangeValue">15.0</span>
+        </div>
 
-      <div class="control-row">
-        <div id="arenaInfo">Arena: 50.0m x 30.0m</div>
+        <div class="control-row slider-row">
+          <label for="coneSlider">Cone half-angle (deg)</label>
+          <input type="range" id="coneSlider" min="1" max="30" step="0.5" value="6">
+          <span id="coneValue">6.0</span>
+        </div>
+
+        <div class="control-row slider-row">
+          <label for="qualitySlider">Quality threshold</label>
+          <input type="range" id="qualitySlider" min="0" max="100" step="1" value="35">
+          <span id="qualityValue">35</span>
+        </div>
+
+        <div class="control-row slider-row">
+          <label for="speedSlider">Simulation speed (m/s)</label>
+          <input type="range" id="speedSlider" min="0" max="2" step="0.05" value="0.4">
+          <span id="speedValue">0.40</span>
+        </div>
+      </section>
+    </aside>
+
+    <section class="panel bottom-panel">
+      <div class="panel-head compact-head">
+        <h2>Event Log</h2>
+        <span id="eventCount" class="tiny-pill">0 events</span>
       </div>
+      <div id="eventLog" class="event-log empty">No events yet</div>
     </section>
 
     <section class="panel table-panel">
-      <h2>Live Telemetry</h2>
+      <div class="panel-head compact-head">
+        <h2>Raw Telemetry</h2>
+      </div>
       <table id="telemetryTable">
         <thead>
           <tr>
             <th>ID</th>
             <th>Online</th>
+            <th>Last Seen</th>
+            <th>Battery</th>
+            <th>Rx Hz</th>
+            <th>Quality</th>
             <th>Yaw</th>
             <th>Pitch</th>
             <th>Roll</th>
-            <th>Quality</th>
-            <th>Last Seen (ms)</th>
             <th>Alert</th>
             <th>Intensity</th>
             <th>Source</th>
+            <th>Seq Drops</th>
+            <th>Addr</th>
+            <th>GPS Q</th>
+            <th>GPS Lat</th>
+            <th>GPS Lon</th>
+            <th>GPS Alt (m)</th>
             <th>X (m)</th>
             <th>Y (m)</th>
           </tr>

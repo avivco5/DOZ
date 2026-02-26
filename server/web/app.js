@@ -3,6 +3,11 @@ const state = {
   arena: { width_m: 50, height_m: 30 },
   config: null,
   ws: null,
+  selectedPlayerId: null,
+  worldTsMs: 0,
+  previousPlayers: new Map(),
+  eventLog: [],
+  alertHistory: [],
 };
 
 const statusEl = document.getElementById("status");
@@ -12,6 +17,16 @@ const canvas = document.getElementById("arenaCanvas");
 const ctx = canvas.getContext("2d");
 const tableBody = document.querySelector("#telemetryTable tbody");
 const terrainSourceEl = document.getElementById("terrainSource");
+
+const playersListEl = document.getElementById("playersList");
+const playersOnlineStatEl = document.getElementById("playersOnlineStat");
+const telemetryDetailEl = document.getElementById("telemetryDetail");
+const selectedPlayerLabelEl = document.getElementById("selectedPlayerLabel");
+const activeAlertsStatEl = document.getElementById("activeAlertsStat");
+const activeAlertsListEl = document.getElementById("activeAlertsList");
+const alertsHistoryListEl = document.getElementById("alertsHistoryList");
+const eventLogEl = document.getElementById("eventLog");
+const eventCountEl = document.getElementById("eventCount");
 
 const controls = {
   useSimPositions: document.getElementById("useSimPositions"),
@@ -48,11 +63,23 @@ const TERRAIN_SOURCES = [
   "/static/assets/arena-aerial.svg",
 ];
 
+const MAX_EVENT_ITEMS = 220;
+const MAX_ALERT_HISTORY_ITEMS = 80;
+
 const terrain = {
   image: null,
   source: "generated",
   photoEnabled: true,
 };
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 function setLinkStatus(text, cssClass) {
   statusEl.textContent = `Link: ${text}`;
@@ -113,7 +140,155 @@ function tryLoadTerrainSource(index = 0) {
   img.onerror = () => {
     tryLoadTerrainSource(index + 1);
   };
-  img.src = `${src}?v=1`;
+  img.src = `${src}?v=2`;
+}
+
+function formatLastSeen(ms) {
+  if (ms == null) {
+    return "-";
+  }
+  const val = Number(ms);
+  if (!Number.isFinite(val)) {
+    return "-";
+  }
+  if (val < 1000) {
+    return `${Math.round(val)} ms`;
+  }
+  return `${(val / 1000).toFixed(1)} s`;
+}
+
+function formatConnectedFor(player) {
+  if (player.connected_since_ms == null || state.worldTsMs <= 0) {
+    return "-";
+  }
+  const elapsedMs = Math.max(0, state.worldTsMs - Number(player.connected_since_ms));
+  const seconds = Math.floor(elapsedMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function qualityBand(qualityValue) {
+  const quality = Number(qualityValue || 0);
+  if (quality >= 70) {
+    return "good";
+  }
+  if (quality >= 35) {
+    return "warn";
+  }
+  return "bad";
+}
+
+function batteryBand(player) {
+  const batteryV = Number(player.battery_v ?? (player.battery_mv ? player.battery_mv / 1000 : 0));
+  if (!Number.isFinite(batteryV) || batteryV <= 0) {
+    return { cls: "", text: "-" };
+  }
+  if (batteryV >= 3.7) {
+    return { cls: "good", text: `${batteryV.toFixed(2)}V` };
+  }
+  if (batteryV >= 3.4) {
+    return { cls: "warn", text: `${batteryV.toFixed(2)}V` };
+  }
+  return { cls: "bad", text: `${batteryV.toFixed(2)}V` };
+}
+
+function playerConnectionState(player) {
+  if (!player.online) {
+    return { label: "offline", dot: "offline", badge: "offline" };
+  }
+  const ageMs = Number(player.last_seen_ms_ago ?? 0);
+  if (ageMs > 1800) {
+    return { label: "degraded", dot: "degraded", badge: "warn" };
+  }
+  return { label: "online", dot: "online", badge: "ok" };
+}
+
+function addEvent(level, name, details = "", tsMs = Date.now()) {
+  state.eventLog.unshift({
+    ts_ms: tsMs,
+    level,
+    name,
+    details,
+  });
+  if (state.eventLog.length > MAX_EVENT_ITEMS) {
+    state.eventLog.length = MAX_EVENT_ITEMS;
+  }
+}
+
+function addAlertHistory(playerId, alertOn, intensity, tsMs) {
+  state.alertHistory.unshift({
+    ts_ms: tsMs,
+    player_id: playerId,
+    alert_on: alertOn,
+    intensity,
+  });
+  if (state.alertHistory.length > MAX_ALERT_HISTORY_ITEMS) {
+    state.alertHistory.length = MAX_ALERT_HISTORY_ITEMS;
+  }
+}
+
+function logStateTransitions(players, tsMs) {
+  const nextSnapshot = new Map();
+
+  for (const player of players) {
+    const prev = state.previousPlayers.get(player.id);
+    if (!prev) {
+      if (player.online) {
+        addEvent("info", "player_online", `P${player.id} connected`, tsMs);
+      }
+      if (player.alert) {
+        addEvent("warn", "alert_on", `P${player.id} intensity ${player.alert_intensity ?? 0}`, tsMs);
+        addAlertHistory(player.id, true, player.alert_intensity ?? 0, tsMs);
+      }
+    } else {
+      if (prev.online !== player.online) {
+        addEvent(
+          player.online ? "info" : "warn",
+          player.online ? "player_online" : "player_offline",
+          `P${player.id} ${player.online ? "connected" : "timed out"}`,
+          tsMs,
+        );
+      }
+
+      if (Boolean(prev.alert) !== Boolean(player.alert)) {
+        addEvent(
+          player.alert ? "warn" : "info",
+          player.alert ? "alert_on" : "alert_off",
+          `P${player.id} intensity ${player.alert_intensity ?? 0}`,
+          tsMs,
+        );
+        addAlertHistory(player.id, Boolean(player.alert), player.alert_intensity ?? 0, tsMs);
+      }
+
+      const prevGps = Number(prev.gps_quality ?? 0);
+      const nextGps = Number(player.gps_quality ?? 0);
+      if (prevGps === 0 && nextGps > 0) {
+        addEvent("info", "gps_lock", `P${player.id} GPS quality ${nextGps}`, tsMs);
+      }
+
+      const prevSource = prev.pos_source || "sim";
+      const nextSource = player.pos_source || "sim";
+      if (prevSource !== nextSource) {
+        addEvent("debug", "position_source", `P${player.id}: ${prevSource} -> ${nextSource}`, tsMs);
+      }
+    }
+
+    nextSnapshot.set(player.id, {
+      online: Boolean(player.online),
+      alert: Boolean(player.alert),
+      gps_quality: Number(player.gps_quality ?? 0),
+      pos_source: player.pos_source,
+    });
+  }
+
+  for (const [playerId, prev] of state.previousPlayers.entries()) {
+    if (!nextSnapshot.has(playerId) && prev.online) {
+      addEvent("warn", "player_missing", `P${playerId} no longer in state`, tsMs);
+    }
+  }
+
+  state.previousPlayers = nextSnapshot;
 }
 
 function connectWs() {
@@ -124,32 +299,49 @@ function connectWs() {
 
   ws.onopen = () => {
     setLinkStatus("CONNECTED", "online");
+    addEvent("info", "ws_connected", "WebSocket link active", Date.now());
+    renderEventLog();
   };
 
   ws.onclose = () => {
     setLinkStatus("RETRYING", "offline");
+    addEvent("warn", "ws_retry", "WebSocket disconnected, retrying", Date.now());
+    renderEventLog();
     setTimeout(connectWs, 1000);
   };
 
   ws.onerror = () => {
     setLinkStatus("ERROR", "error");
+    addEvent("error", "ws_error", "WebSocket transport error", Date.now());
+    renderEventLog();
   };
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "world_state") {
-      state.players = msg.players || [];
+      const incomingPlayers = Array.isArray(msg.players) ? msg.players : [];
+      state.worldTsMs = Number(msg.ts_ms || 0);
+      logStateTransitions(incomingPlayers, Date.now());
+      state.players = incomingPlayers;
+
       if (msg.arena) {
         state.arena = {
           width_m: Number(msg.arena.width_m || 50),
           height_m: Number(msg.arena.height_m || 30),
         };
       }
+
       if (msg.config) {
         state.config = msg.config;
         syncControlsFromConfig();
       }
+
+      keepSelectionValid();
       renderSummary();
+      renderPlayersList();
+      renderTelemetryDetail();
+      renderAlertsPanel();
+      renderEventLog();
       renderTable();
       drawArena();
     } else if (msg.type === "config") {
@@ -211,18 +403,26 @@ function bindControls() {
 
   controls.randomizeBtn.addEventListener("click", () => {
     sendWs({ type: "action", name: "randomize_positions" });
+    addEvent("info", "action", "randomize_positions", Date.now());
+    renderEventLog();
   });
 
   controls.resetBtn.addEventListener("click", () => {
     sendWs({ type: "action", name: "reset_world" });
+    addEvent("warn", "action", "reset_world", Date.now());
+    renderEventLog();
   });
 
   controls.pauseBtn.addEventListener("click", () => {
     sendWs({ type: "action", name: "pause_sim" });
+    addEvent("info", "action", "pause_sim", Date.now());
+    renderEventLog();
   });
 
   controls.resumeBtn.addEventListener("click", () => {
     sendWs({ type: "action", name: "resume_sim" });
+    addEvent("info", "action", "resume_sim", Date.now());
+    renderEventLog();
   });
 }
 
@@ -273,6 +473,219 @@ function renderSummary() {
   kpis.threat.dataset.level = threat.level;
 }
 
+function sortedPlayers(players) {
+  return [...players].sort((a, b) => {
+    if (a.alert && !b.alert) {
+      return -1;
+    }
+    if (!a.alert && b.alert) {
+      return 1;
+    }
+    if (a.online && !b.online) {
+      return -1;
+    }
+    if (!a.online && b.online) {
+      return 1;
+    }
+    return a.id - b.id;
+  });
+}
+
+function keepSelectionValid() {
+  const selectedExists = state.players.some((player) => player.id === state.selectedPlayerId);
+  if (selectedExists) {
+    return;
+  }
+  const sorted = sortedPlayers(state.players);
+  state.selectedPlayerId = sorted.length ? sorted[0].id : null;
+}
+
+function renderPlayersList() {
+  const sorted = sortedPlayers(state.players);
+  const online = state.players.filter((player) => player.online).length;
+  playersOnlineStatEl.textContent = `${online}/${state.players.length} online`;
+
+  if (!sorted.length) {
+    playersListEl.innerHTML = '<div class="telemetry-detail empty">No player data</div>';
+    return;
+  }
+
+  playersListEl.innerHTML = sorted
+    .map((player) => {
+      const connection = playerConnectionState(player);
+      const battery = batteryBand(player);
+      const qualityClass = qualityBand(player.quality);
+      const selectedClass = state.selectedPlayerId === player.id ? " selected" : "";
+      const alertClass = player.alert ? " alerting" : "";
+      const qualityPercent = `${Number(player.quality ?? 0).toFixed(0)}%`;
+      const rxHz = Number(player.packet_rate_hz ?? 0).toFixed(1);
+
+      return `
+        <button type="button" class="player-card${selectedClass}${alertClass}" data-player-id="${player.id}">
+          <div class="player-head">
+            <div class="player-id">
+              <span class="player-dot ${connection.dot}"></span>
+              <span>P${player.id}</span>
+            </div>
+            <span class="conn-badge ${connection.badge}">${connection.label}</span>
+          </div>
+          <div class="player-grid">
+            <div class="player-metric"><span>Last Seen</span><span>${formatLastSeen(player.last_seen_ms_ago)}</span></div>
+            <div class="player-metric"><span>Rx</span><span>${rxHz} Hz</span></div>
+            <div class="player-metric"><span>Battery</span><span class="${battery.cls}">${battery.text}</span></div>
+            <div class="player-metric"><span>RF</span><span class="${qualityClass}">${qualityPercent}</span></div>
+            <div class="player-metric"><span>Yaw</span><span>${Number(player.yaw_deg ?? 0).toFixed(0)}°</span></div>
+            <div class="player-metric"><span>GPS</span><span>${Number(player.gps_quality ?? 0)}</span></div>
+          </div>
+        </button>
+      `;
+    })
+    .join("");
+
+  const cards = playersListEl.querySelectorAll(".player-card");
+  for (const card of cards) {
+    card.addEventListener("click", () => {
+      const playerId = Number(card.getAttribute("data-player-id"));
+      state.selectedPlayerId = playerId;
+      renderPlayersList();
+      renderTelemetryDetail();
+      drawArena();
+    });
+  }
+}
+
+function telemetryRow(label, value) {
+  return `<div class="telemetry-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`;
+}
+
+function renderTelemetryDetail() {
+  const selected = state.players.find((player) => player.id === state.selectedPlayerId);
+  if (!selected) {
+    selectedPlayerLabelEl.textContent = "none";
+    telemetryDetailEl.classList.add("empty");
+    telemetryDetailEl.textContent = "Select a player to view detailed telemetry";
+    return;
+  }
+
+  selectedPlayerLabelEl.textContent = `P${selected.id}`;
+  telemetryDetailEl.classList.remove("empty");
+
+  const battery = batteryBand(selected);
+  const qualityPct = `${Number(selected.quality ?? 0).toFixed(0)}%`;
+  const position = `${Number(selected.x_m ?? 0).toFixed(2)}, ${Number(selected.y_m ?? 0).toFixed(2)} m`;
+  const gpsLat = selected.gps_lat_deg == null ? "-" : Number(selected.gps_lat_deg).toFixed(7);
+  const gpsLon = selected.gps_lon_deg == null ? "-" : Number(selected.gps_lon_deg).toFixed(7);
+  const gpsAlt = selected.gps_alt_m == null ? "-" : `${Number(selected.gps_alt_m).toFixed(2)} m`;
+
+  telemetryDetailEl.innerHTML = `
+    <div class="telemetry-group">
+      <p class="telemetry-group-title">Connectivity</p>
+      ${telemetryRow("State", playerConnectionState(selected).label)}
+      ${telemetryRow("Last Seen", formatLastSeen(selected.last_seen_ms_ago))}
+      ${telemetryRow("Connected For", formatConnectedFor(selected))}
+      ${telemetryRow("Address", selected.addr || "-")}
+      ${telemetryRow("Packet Rate", `${Number(selected.packet_rate_hz ?? 0).toFixed(2)} Hz`)}
+    </div>
+    <div class="telemetry-group">
+      <p class="telemetry-group-title">Attitude / Alert</p>
+      ${telemetryRow("Yaw", `${Number(selected.yaw_deg ?? 0).toFixed(1)} deg`)}
+      ${telemetryRow("Pitch", `${Number(selected.pitch_deg ?? 0).toFixed(1)} deg`)}
+      ${telemetryRow("Roll", `${Number(selected.roll_deg ?? 0).toFixed(1)} deg`)}
+      ${telemetryRow("Alert", selected.alert ? `ON (${Number(selected.alert_intensity ?? 0)})` : "OFF")}
+    </div>
+    <div class="telemetry-group">
+      <p class="telemetry-group-title">RF / Power</p>
+      ${telemetryRow("Quality", qualityPct)}
+      ${telemetryRow("Battery", battery.text)}
+      ${telemetryRow("Seq Drops", String(Number(selected.seq_drop_count ?? 0)))}
+    </div>
+    <div class="telemetry-group">
+      <p class="telemetry-group-title">Position / GPS</p>
+      ${telemetryRow("Position", position)}
+      ${telemetryRow("Source", selected.pos_source || "sim")}
+      ${telemetryRow("Pos Quality", String(Number(selected.pos_quality ?? 0)))}
+      ${telemetryRow("GPS Quality", String(Number(selected.gps_quality ?? 0)))}
+      ${telemetryRow("GPS Lat", gpsLat)}
+      ${telemetryRow("GPS Lon", gpsLon)}
+      ${telemetryRow("GPS Alt", gpsAlt)}
+    </div>
+  `;
+}
+
+function renderAlertsPanel() {
+  const active = sortedPlayers(state.players).filter((player) => player.alert);
+  activeAlertsStatEl.textContent = `${active.length} active`;
+
+  if (!active.length) {
+    activeAlertsListEl.classList.add("empty");
+    activeAlertsListEl.textContent = "No active alerts";
+  } else {
+    activeAlertsListEl.classList.remove("empty");
+    activeAlertsListEl.innerHTML = active
+      .map((player) => {
+        const age = formatLastSeen(player.last_seen_ms_ago);
+        return `
+          <div class="alert-item">
+            <div class="alert-item-head">
+              <span>P${player.id} alert</span>
+              <span>${Number(player.alert_intensity ?? 0)}</span>
+            </div>
+            <div class="alert-item-meta">last seen ${age} · quality ${Number(player.quality ?? 0).toFixed(0)}%</div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  if (!state.alertHistory.length) {
+    alertsHistoryListEl.classList.add("empty");
+    alertsHistoryListEl.textContent = "No alert history yet";
+  } else {
+    alertsHistoryListEl.classList.remove("empty");
+    alertsHistoryListEl.innerHTML = state.alertHistory
+      .slice(0, 24)
+      .map((evt) => {
+        const ts = new Date(evt.ts_ms).toISOString().slice(11, 19);
+        return `
+          <div class="alert-history-item">
+            <span class="time">${ts}</span>
+            <span>P${evt.player_id}</span>
+            <span class="${evt.alert_on ? "level" : "state-off"}">${evt.alert_on ? "ON" : "OFF"}</span>
+            <span>${Number(evt.intensity ?? 0)}</span>
+          </div>
+        `;
+      })
+      .join("");
+  }
+}
+
+function renderEventLog() {
+  eventCountEl.textContent = `${state.eventLog.length} events`;
+
+  if (!state.eventLog.length) {
+    eventLogEl.classList.add("empty");
+    eventLogEl.textContent = "No events yet";
+    return;
+  }
+
+  eventLogEl.classList.remove("empty");
+  eventLogEl.innerHTML = state.eventLog
+    .slice(0, 120)
+    .map((evt) => {
+      const ts = new Date(evt.ts_ms).toISOString().slice(11, 19);
+      const levelClass = evt.level === "warn" || evt.level === "error" ? evt.level : "";
+      return `
+        <div class="event-item">
+          <span class="event-time">${ts}</span>
+          <span class="event-level ${levelClass}">${escapeHtml(evt.level || "info")}</span>
+          <span class="event-name">${escapeHtml(evt.name || "event")}</span>
+          <span class="event-details">${escapeHtml(evt.details || "")}</span>
+        </div>
+      `;
+    })
+    .join("");
+}
+
 function colorForPlayer(id) {
   const palette = ["#5cd8ff", "#8df578", "#ffd166", "#ff8d66", "#c6a9ff", "#5ee7d1"];
   return palette[(id - 1) % palette.length];
@@ -319,7 +732,6 @@ function drawArena() {
   const base = toCanvas(0, 0, world);
 
   drawTerrain(base);
-
   drawGrid(world);
   drawCones(world);
   drawTrails(world);
@@ -346,13 +758,13 @@ function drawSyntheticTerrain(base) {
     base.originX + base.drawW * 0.25,
     base.originY + base.drawH * 0.58,
     base.originX + base.drawW * 0.46,
-    base.originY + base.drawH * 0.52
+    base.originY + base.drawH * 0.52,
   );
   ctx.quadraticCurveTo(
     base.originX + base.drawW * 0.62,
     base.originY + base.drawH * 0.46,
     base.originX + base.drawW * 0.9,
-    base.originY + base.drawH * 0.24
+    base.originY + base.drawH * 0.24,
   );
   ctx.stroke();
 
@@ -465,6 +877,14 @@ function drawPlayers(world) {
       ctx.stroke();
     }
 
+    if (state.selectedPlayerId === player.id) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 11, 0, 2 * Math.PI);
+      ctx.strokeStyle = "#96f0ff";
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+
     ctx.beginPath();
     ctx.arc(p.x, p.y, 6, 0, 2 * Math.PI);
     ctx.fillStyle = color;
@@ -512,14 +932,22 @@ function renderTable() {
     const cells = [
       `P${player.id}`,
       player.online ? "yes" : "no",
+      formatLastSeen(player.last_seen_ms_ago),
+      player.battery_v == null ? "-" : `${Number(player.battery_v).toFixed(2)}V`,
+      `${Number(player.packet_rate_hz ?? 0).toFixed(2)}`,
+      String(Number(player.quality ?? 0).toFixed(0)),
       Number(player.yaw_deg || 0).toFixed(1),
       Number(player.pitch_deg || 0).toFixed(1),
       Number(player.roll_deg || 0).toFixed(1),
-      String(player.quality ?? 0),
-      player.last_seen_ms_ago == null ? "-" : String(player.last_seen_ms_ago),
       player.alert ? "on" : "off",
       String(player.alert_intensity ?? 0),
       player.pos_source || "sim",
+      String(player.seq_drop_count ?? 0),
+      player.addr || "-",
+      String(player.gps_quality ?? 0),
+      player.gps_lat_deg == null ? "-" : Number(player.gps_lat_deg).toFixed(7),
+      player.gps_lon_deg == null ? "-" : Number(player.gps_lon_deg).toFixed(7),
+      player.gps_alt_m == null ? "-" : Number(player.gps_alt_m).toFixed(2),
       Number(player.x_m || 0).toFixed(2),
       Number(player.y_m || 0).toFixed(2),
     ];
@@ -537,6 +965,11 @@ bindControls();
 tryLoadTerrainSource();
 connectWs();
 renderSummary();
+renderPlayersList();
+renderTelemetryDetail();
+renderAlertsPanel();
+renderEventLog();
+renderTable();
 updateTerrainSourceLabel();
 drawArena();
 updateClockUtc();

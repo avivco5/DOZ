@@ -35,6 +35,10 @@ Optional with simulated positions from nodes:
 ```bash
 python -m tools.sim_node --player-ids 1,2 --send-pos
 ```
+Optional with synthetic GPS (Telemetry v2):
+```bash
+python -m tools.sim_node --player-ids 1,2 --send-pos --send-gps
+```
 
 ### 5) Run tests
 ```bash

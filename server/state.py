@@ -23,10 +23,17 @@ class PlayerState:
     real_x_m: float | None = None
     real_y_m: float | None = None
     pos_quality: int = 0
+    gps_lat_deg: float | None = None
+    gps_lon_deg: float | None = None
+    gps_alt_m: float | None = None
+    gps_quality: int = 0
 
     last_seen_ms: int | None = None
     online: bool = False
+    connected_since_ms: int | None = None
     addr: tuple[str, int] | None = None
+    packet_rate_hz: float = 0.0
+    seq_drop_count: int = 0
 
     alert_on: bool = False
     alert_intensity: int = 0
@@ -63,6 +70,24 @@ class PlayerRegistry:
 
     def ingest_telemetry(self, pkt: TelemetryPacket, addr: tuple[str, int], now_ms: int) -> None:
         player = self.ensure_player(pkt.player_id)
+        prev_seq = player.seq
+        prev_seen_ms = player.last_seen_ms
+        was_online = player.online
+
+        if prev_seen_ms is not None:
+            dt_ms = max(0, now_ms - prev_seen_ms)
+            if dt_ms > 0:
+                instant_rate_hz = 1000.0 / dt_ms
+                if player.packet_rate_hz <= 0.0:
+                    player.packet_rate_hz = instant_rate_hz
+                else:
+                    player.packet_rate_hz = (player.packet_rate_hz * 0.8) + (instant_rate_hz * 0.2)
+
+        if prev_seen_ms is not None:
+            seq_delta = (pkt.seq - prev_seq) & 0xFFFF
+            if 1 < seq_delta < 0x8000:
+                player.seq_drop_count += seq_delta - 1
+
         player.seq = pkt.seq
         player.timestamp_ms = pkt.timestamp_ms
         player.yaw_deg = pkt.yaw_deg
@@ -72,8 +97,14 @@ class PlayerRegistry:
         player.battery_mv = pkt.battery_mv
         player.flags = pkt.flags
         player.pos_quality = pkt.pos_quality
+        player.gps_lat_deg = pkt.gps_lat_deg
+        player.gps_lon_deg = pkt.gps_lon_deg
+        player.gps_alt_m = pkt.gps_alt_m
+        player.gps_quality = pkt.gps_quality
         player.last_seen_ms = now_ms
         player.online = True
+        if (player.connected_since_ms is None) or (not was_online):
+            player.connected_since_ms = now_ms
         player.addr = addr
 
         if pkt.pos_quality > 0:
@@ -83,10 +114,14 @@ class PlayerRegistry:
     def update_online_flags(self, now_ms: int) -> None:
         timeout = self.config.offline_timeout_ms
         for player in self.players.values():
+            was_online = player.online
             if player.last_seen_ms is None:
                 player.online = False
+                player.connected_since_ms = None
                 continue
             player.online = (now_ms - player.last_seen_ms) <= timeout
+            if was_online and not player.online:
+                player.connected_since_ms = None
 
     def _has_valid_real_position(self, player: PlayerState) -> bool:
         if player.real_x_m is None or player.real_y_m is None:
@@ -172,7 +207,16 @@ class PlayerRegistry:
                     "alert_intensity": player.alert_intensity,
                     "pos_source": pos_source,
                     "pos_quality": player.pos_quality,
+                    "gps_lat_deg": None if player.gps_lat_deg is None else round(player.gps_lat_deg, 7),
+                    "gps_lon_deg": None if player.gps_lon_deg is None else round(player.gps_lon_deg, 7),
+                    "gps_alt_m": None if player.gps_alt_m is None else round(player.gps_alt_m, 2),
+                    "gps_quality": player.gps_quality,
                     "battery_mv": player.battery_mv,
+                    "battery_v": round(player.battery_mv / 1000.0, 2) if player.battery_mv > 0 else None,
+                    "packet_rate_hz": round(player.packet_rate_hz, 2),
+                    "seq_drop_count": player.seq_drop_count,
+                    "connected_since_ms": player.connected_since_ms,
+                    "addr": None if player.addr is None else f"{player.addr[0]}:{player.addr[1]}",
                     "trail": trail,
                     "last_seen_ms_ago": last_seen_ms_ago,
                 }

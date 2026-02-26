@@ -43,7 +43,8 @@ def main() -> None:
                 pkt = decode_telemetry(data)
                 print(
                     f"{addr} TELEMETRY pid={pkt.player_id} seq={pkt.seq} "
-                    f"yaw={pkt.yaw_deg:.2f} q={pkt.quality} pos=({pkt.pos_x_cm},{pkt.pos_y_cm})"
+                    f"yaw={pkt.yaw_deg:.2f} q={pkt.quality} pos=({pkt.pos_x_cm},{pkt.pos_y_cm}) "
+                    f"gps=({pkt.gps_lat_deg},{pkt.gps_lon_deg}) gps_q={pkt.gps_quality}"
                 )
             elif msg_type == MSG_ALERT:
                 pkt = decode_alert(data)

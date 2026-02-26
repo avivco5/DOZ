@@ -242,6 +242,10 @@ class MatchCoordinator:
         web_root = Path(__file__).parent / "web"
         return web.FileResponse(web_root / "index.html")
 
+    async def view3d_handler(self, _: web.Request) -> web.FileResponse:
+        web_root = Path(__file__).parent / "web"
+        return web.FileResponse(web_root / "view3d.html")
+
     async def on_startup(self, app: web.Application) -> None:
         loop = asyncio.get_running_loop()
         transport, _ = await loop.create_datagram_endpoint(
@@ -277,6 +281,7 @@ def build_app(coordinator: MatchCoordinator, host: str, udp_port: int) -> web.Ap
     web_root = Path(__file__).parent / "web"
 
     app.router.add_get("/", coordinator.index_handler)
+    app.router.add_get("/3d", coordinator.view3d_handler)
     app.router.add_get("/ws", coordinator.ws_handler)
     app.router.add_static("/static/", web_root, show_index=False)
 
