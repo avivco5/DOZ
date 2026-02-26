@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FDW · 3D Arena View</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #060e14;
+      color: #c8dde8;
+      font-family: 'Bahnschrift', 'Segoe UI', monospace;
+      overflow: hidden;
+    }
+
+    #canvas3d {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* ── HUD top ─────────────────────────────────────────── */
+    .hud-top {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px 6px;
+      background: linear-gradient(to bottom, rgba(6,14,20,0.94) 65%, transparent);
+    }
+
+    .brand { display: flex; align-items: baseline; gap: 14px; }
+    .brand-title {
+      font-size: 1rem; font-weight: 700;
+      letter-spacing: 0.14em; color: #7cd8e8;
+      text-transform: uppercase;
+    }
+    .brand-sub { font-size: 0.68rem; color: #4a7888; letter-spacing: 0.07em; }
+
+    .topbar-right { display: flex; align-items: center; gap: 14px; }
+
+    .status-pill {
+      font-size: 0.65rem; font-weight: 700;
+      letter-spacing: 0.12em;
+      padding: 3px 10px;
+      border-radius: 12px;
+      border: 1px solid currentColor;
+    }
+    .status-pill.connecting { color: #7888a0; border-color: #7888a0; }
+    .status-pill.online     { color: #5cd8a0; border-color: #5cd8a0; }
+    .status-pill.offline    { color: #c87840; border-color: #c87840; }
+    .status-pill.error      { color: #ff6256; border-color: #ff6256; }
+
+    .clock { font-size: 0.78rem; color: #5a7888; letter-spacing: 0.1em; }
+
+    .stats-strip {
+      display: flex; gap: 10px;
+      padding: 0 20px 12px;
+    }
+
+    .stat-card {
+      background: rgba(8,20,32,0.80);
+      border: 1px solid #1a3a50;
+      border-radius: 6px;
+      padding: 6px 16px;
+      min-width: 80px;
+    }
+    .stat-label { font-size: 0.58rem; color: #4a7080; letter-spacing: 0.1em; text-transform: uppercase; }
+    .stat-value { font-size: 1.05rem; font-weight: 700; color: #a0d0e0; margin-top: 1px; }
+    .stat-value[data-level="critical"] { color: #ff6256; }
+    .stat-value[data-level="warning"]  { color: #ffd166; }
+    .stat-value[data-level="normal"]   { color: #5cd8a0; }
+
+    /* ── HUD bottom ─────────────────────────────────────── */
+    .hud-bottom {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: linear-gradient(to top, rgba(6,14,20,0.90) 65%, transparent);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .hud-bottom a {
+      pointer-events: auto;
+      font-size: 0.72rem;
+      color: #4a7888;
+      text-decoration: none;
+      border: 1px solid #1a3a50;
+      border-radius: 4px;
+      padding: 4px 14px;
+      transition: color 0.18s, border-color 0.18s;
+    }
+    .hud-bottom a:hover { color: #7cd8e8; border-color: #3a7888; }
+
+    .config-info { font-size: 0.68rem; color: #3a6070; letter-spacing: 0.05em; }
+    .controls-hint { font-size: 0.64rem; color: #304858; }
+  </style>
+</head>
+<body>
+
+<canvas id="canvas3d"></canvas>
+
+<!-- Top HUD -->
+<div class="hud-top">
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-title">FDW · 3D Arena</span>
+      <span class="brand-sub">Live Tactical Situational Awareness</span>
+    </div>
+    <div class="topbar-right">
+      <span class="clock" id="clock3d">UTC --:--:--</span>
+      <span class="status-pill connecting" id="statusPill">Link: CONNECTING</span>
+    </div>
+  </div>
+  <div class="stats-strip">
+    <div class="stat-card">
+      <div class="stat-label">Nodes Online</div>
+      <div class="stat-value" id="hudOnline">0/0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active Alerts</div>
+      <div class="stat-value" id="hudAlerts">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Threat Level</div>
+      <div class="stat-value" id="hudThreat" data-level="normal">GREEN</div>
+    </div>
+    <div class="stat-card" style="min-width:180px">
+      <div class="stat-label">Config</div>
+      <div class="stat-value" style="font-size:0.72rem" id="hudConfig">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom HUD -->
+<div class="hud-bottom">
+  <a href="/">← Main Console</a>
+  <span class="controls-hint">Left-drag: rotate · Right-drag: pan · Scroll: zoom</span>
+  <span class="config-info" id="arenaInfo">Arena: —</span>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module" src="/static/view3d.js"></script>
+</body>
+</html>

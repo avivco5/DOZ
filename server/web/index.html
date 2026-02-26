@@ -3,27 +3,77 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Friendly Direction Warning - Admin</title>
+  <title>FDW Tactical Operations Console</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header>
-    <h1>Friendly Direction Warning - Admin</h1>
-    <div id="status">WebSocket: connecting</div>
+  <div class="backdrop"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <p class="eyebrow">Friendly Direction Warning</p>
+      <h1>Tactical Operations Console</h1>
+      <p class="subtitle">Directional safety telemetry and live situational awareness</p>
+    </div>
+    <div class="topbar-right">
+      <div id="clockUtc" class="clock">UTC --:--:--</div>
+      <div id="status" class="status-pill connecting">Link: CONNECTING</div>
+    </div>
   </header>
+
+  <section class="kpi-strip" aria-label="Operational summary">
+    <article class="kpi-card">
+      <span class="kpi-label">Nodes Online</span>
+      <span id="kpiOnline" class="kpi-value">0/0</span>
+    </article>
+    <article class="kpi-card">
+      <span class="kpi-label">Active Alerts</span>
+      <span id="kpiAlerts" class="kpi-value">0</span>
+    </article>
+    <article class="kpi-card">
+      <span class="kpi-label">Avg Quality</span>
+      <span id="kpiQuality" class="kpi-value">0.0%</span>
+    </article>
+    <article class="kpi-card">
+      <span class="kpi-label">Tracking Mode</span>
+      <span id="kpiMode" class="kpi-value">SIM</span>
+    </article>
+    <article class="kpi-card">
+      <span class="kpi-label">Threat Level</span>
+      <span id="kpiThreat" class="kpi-value" data-level="normal">GREEN</span>
+    </article>
+  </section>
 
   <main>
     <section class="panel map-panel">
-      <canvas id="arenaCanvas" width="1000" height="600"></canvas>
+      <div class="panel-head">
+        <h2>Operational Arena</h2>
+        <div class="view-toggles">
+          <label class="toggle-chip">
+            <input type="checkbox" id="photoToggle" checked>
+            <span>Aerial Layer</span>
+          </label>
+          <label class="toggle-chip">
+            <input type="checkbox" id="view3DToggle" checked>
+            <span>3D View</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="arenaViewport" class="arena-viewport is-3d">
+        <canvas id="arenaCanvas" width="1000" height="600"></canvas>
+        <div class="arena-overlay-glow"></div>
+      </div>
+      <p id="terrainSource" class="terrain-source">Terrain source: loading...</p>
     </section>
 
     <section class="panel controls-panel">
-      <h2>Controls</h2>
+      <h2>Control Surface</h2>
 
       <div class="control-row">
         <label>
           <input type="checkbox" id="useSimPositions" checked>
-          use_sim_positions
+          Use simulated positions
         </label>
       </div>
 
@@ -38,25 +88,25 @@
       </div>
 
       <div class="control-row slider-row">
-        <label for="rangeSlider">max_range_m</label>
+        <label for="rangeSlider">Max range (m)</label>
         <input type="range" id="rangeSlider" min="2" max="50" step="0.5" value="15">
         <span id="rangeValue">15.0</span>
       </div>
 
       <div class="control-row slider-row">
-        <label for="coneSlider">cone_half_angle_deg</label>
+        <label for="coneSlider">Cone half-angle (deg)</label>
         <input type="range" id="coneSlider" min="1" max="30" step="0.5" value="6">
         <span id="coneValue">6.0</span>
       </div>
 
       <div class="control-row slider-row">
-        <label for="qualitySlider">quality_threshold</label>
+        <label for="qualitySlider">Quality threshold</label>
         <input type="range" id="qualitySlider" min="0" max="100" step="1" value="35">
         <span id="qualityValue">35</span>
       </div>
 
       <div class="control-row slider-row">
-        <label for="speedSlider">sim_speed_mps</label>
+        <label for="speedSlider">Simulation speed (m/s)</label>
         <input type="range" id="speedSlider" min="0" max="2" step="0.05" value="0.4">
         <span id="speedValue">0.40</span>
       </div>
@@ -71,18 +121,18 @@
       <table id="telemetryTable">
         <thead>
           <tr>
-            <th>id</th>
-            <th>online</th>
-            <th>yaw</th>
-            <th>pitch</th>
-            <th>roll</th>
-            <th>quality</th>
-            <th>last_seen_ms_ago</th>
-            <th>alert</th>
-            <th>intensity</th>
-            <th>pos_source</th>
-            <th>x_m</th>
-            <th>y_m</th>
+            <th>ID</th>
+            <th>Online</th>
+            <th>Yaw</th>
+            <th>Pitch</th>
+            <th>Roll</th>
+            <th>Quality</th>
+            <th>Last Seen (ms)</th>
+            <th>Alert</th>
+            <th>Intensity</th>
+            <th>Source</th>
+            <th>X (m)</th>
+            <th>Y (m)</th>
           </tr>
         </thead>
         <tbody></tbody>
