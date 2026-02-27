@@ -24,9 +24,15 @@ python -m server.main
 ```
 Open `http://127.0.0.1:8080`
 
+Main UI routes:
+- `http://127.0.0.1:8080/console`
+- `http://127.0.0.1:8080/aar`
+- `http://127.0.0.1:8080/about`
+
 Then run simulated players:
 ```bash
 python tools/sim_node.py --player-ids 1,2
 ```
 
 See `docs/RUN.md` for full Linux and Windows instructions.
+See `docs/WEB_UI.md` for frontend architecture and adapter details.

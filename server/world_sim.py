@@ -91,6 +91,12 @@ class WorldSimulator:
         self._players[player_id] = player
         return player
 
+    def remove_player(self, player_id: int) -> bool:
+        if player_id not in self._players:
+            return False
+        del self._players[player_id]
+        return True
+
     def randomize_positions(self) -> None:
         for player in self._players.values():
             player.x_m = self._rng.uniform(0.0, self.arena_width_m)

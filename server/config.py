@@ -21,6 +21,7 @@ class CoordinatorConfig:
     alert_hold_ms: int = 250
 
     use_sim_positions: bool = True
+    sim_players_emulate_real: bool = False
     sim_speed_mps: float = 0.4
     boundary_behavior: str = "bounce"
     sim_noise: float = 0.35
@@ -43,6 +44,8 @@ class CoordinatorConfig:
             self.sim_speed_mps = max(0.0, min(float(updates["sim_speed_mps"]), 5.0))
         if "use_sim_positions" in updates:
             self.use_sim_positions = bool(updates["use_sim_positions"])
+        if "sim_players_emulate_real" in updates:
+            self.sim_players_emulate_real = bool(updates["sim_players_emulate_real"])
         if "arena_width_m" in updates:
             self.arena_width_m = max(5.0, min(float(updates["arena_width_m"]), 1000.0))
         if "arena_height_m" in updates:

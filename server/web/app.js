@@ -30,6 +30,7 @@ const eventCountEl = document.getElementById("eventCount");
 
 const controls = {
   useSimPositions: document.getElementById("useSimPositions"),
+  simPlayersEmulateReal: document.getElementById("simPlayersEmulateReal"),
   photoToggle: document.getElementById("photoToggle"),
   view3DToggle: document.getElementById("view3DToggle"),
   rangeSlider: document.getElementById("rangeSlider"),
@@ -44,6 +45,8 @@ const controls = {
   resetBtn: document.getElementById("resetBtn"),
   pauseBtn: document.getElementById("pauseBtn"),
   resumeBtn: document.getElementById("resumeBtn"),
+  addPlayerBtn: document.getElementById("addPlayerBtn"),
+  removePlayerBtn: document.getElementById("removePlayerBtn"),
   arenaInfo: document.getElementById("arenaInfo"),
 };
 
@@ -380,6 +383,14 @@ function bindControls() {
     renderSummary();
   });
 
+  controls.simPlayersEmulateReal.addEventListener("change", () => {
+    sendWs({
+      type: "set_config",
+      values: { sim_players_emulate_real: controls.simPlayersEmulateReal.checked },
+    });
+    renderSummary();
+  });
+
   controls.photoToggle.addEventListener("change", () => {
     terrain.photoEnabled = Boolean(controls.photoToggle.checked);
     setToggleChipState(controls.photoToggle);
@@ -424,6 +435,18 @@ function bindControls() {
     addEvent("info", "action", "resume_sim", Date.now());
     renderEventLog();
   });
+
+  controls.addPlayerBtn.addEventListener("click", () => {
+    sendWs({ type: "action", name: "add_sim_player" });
+    addEvent("info", "action", "add_sim_player", Date.now());
+    renderEventLog();
+  });
+
+  controls.removePlayerBtn.addEventListener("click", () => {
+    sendWs({ type: "action", name: "remove_sim_player" });
+    addEvent("warn", "action", "remove_sim_player", Date.now());
+    renderEventLog();
+  });
 }
 
 function syncControlsFromConfig() {
@@ -431,6 +454,7 @@ function syncControlsFromConfig() {
     return;
   }
   controls.useSimPositions.checked = Boolean(state.config.use_sim_positions);
+  controls.simPlayersEmulateReal.checked = Boolean(state.config.sim_players_emulate_real);
 
   controls.rangeSlider.value = String(state.config.max_range_m ?? 15);
   controls.coneSlider.value = String(state.config.cone_half_angle_deg ?? 6);

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
@@ -18,6 +19,15 @@ from .world_sim import WorldSimulator
 
 
 LOG = logging.getLogger("fdw.server")
+SERVER_VERSION = "1.1.0"
+
+
+@dataclass(slots=True)
+class RecordingState:
+    active: bool = False
+    session_id: str | None = None
+    start_ts_ms: int | None = None
+    output_dir: str | None = None
 
 
 class TelemetryProtocol(asyncio.DatagramProtocol):
@@ -53,10 +63,82 @@ class MatchCoordinator:
         self.udp_transport: asyncio.DatagramTransport | None = None
         self.ws_clients: set[web.WebSocketResponse] = set()
         self.tasks: list[asyncio.Task] = []
+        self.recording = RecordingState()
+        self.server_started_ms = self.now_ms()
 
     @staticmethod
     def now_ms() -> int:
         return int(time.monotonic() * 1000)
+
+    def recording_payload(self) -> dict[str, Any]:
+        return {
+            "active": self.recording.active,
+            "session_id": self.recording.session_id,
+            "start_ts_ms": self.recording.start_ts_ms,
+            "output_dir": self.recording.output_dir,
+        }
+
+    def start_recording(self, now_ms: int) -> dict[str, Any]:
+        if self.recording.active:
+            return {
+                "ok": True,
+                "recording": self.recording_payload(),
+            }
+
+        session_id = f"REC-{now_ms}"
+        output_dir = f"/tmp/aar/{session_id}"
+        self.recording.active = True
+        self.recording.session_id = session_id
+        self.recording.start_ts_ms = now_ms
+        self.recording.output_dir = output_dir
+        return {
+            "ok": True,
+            "recording": self.recording_payload(),
+        }
+
+    def stop_recording(self) -> dict[str, Any]:
+        if not self.recording.active:
+            return {
+                "ok": True,
+                "recording": self.recording_payload(),
+                "files": [],
+            }
+
+        output_dir = self.recording.output_dir
+        session_id = self.recording.session_id
+        files = []
+        if output_dir is not None:
+            files = [
+                f"{output_dir}/world_state.jsonl",
+                f"{output_dir}/events.jsonl",
+            ]
+
+        self.recording.active = False
+        self.recording.session_id = None
+        self.recording.start_ts_ms = None
+        self.recording.output_dir = None
+        return {
+            "ok": True,
+            "recording": self.recording_payload(),
+            "files": files,
+            "session_id": session_id,
+        }
+
+    def world_state_payload(self, now_ms: int) -> dict[str, Any]:
+        message = self.state.world_state_message(now_ms)
+        message["schema_version"] = 1
+        message["server_time_ms"] = now_ms
+        message["obstacles"] = []
+        message["events"] = []
+        message["recording"] = self.recording_payload()
+        message["server_version"] = SERVER_VERSION
+        return message
+
+    def add_sim_player(self) -> int | None:
+        return self.state.add_sim_player()
+
+    def remove_sim_player(self) -> int | None:
+        return self.state.remove_sim_player()
 
     def handle_udp_packet(self, data: bytes, addr: tuple[str, int]) -> None:
         now_ms = self.now_ms()
@@ -162,7 +244,7 @@ class MatchCoordinator:
         if not self.ws_clients:
             return
         now_ms = self.now_ms()
-        message = self.state.world_state_message(now_ms)
+        message = self.world_state_payload(now_ms)
         disconnected: list[web.WebSocketResponse] = []
         for ws in self.ws_clients:
             try:
@@ -191,7 +273,7 @@ class MatchCoordinator:
         self.ws_clients.add(ws)
 
         await ws.send_json({"type": "config", "config": self.config.to_dict()})
-        await ws.send_json(self.state.world_state_message(self.now_ms()))
+        await ws.send_json(self.world_state_payload(self.now_ms()))
 
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
@@ -233,18 +315,131 @@ class MatchCoordinator:
             elif action == "resume_sim":
                 self.config.sim_paused = False
                 self.world.set_paused(False)
+            elif action == "start_recording":
+                self.start_recording(self.now_ms())
+            elif action == "stop_recording":
+                self.stop_recording()
+            elif action == "add_sim_player":
+                self.add_sim_player()
+            elif action == "remove_sim_player":
+                self.remove_sim_player()
             await self.broadcast_config()
+            await self.broadcast_world_state()
             return
 
         LOG.warning("Unknown WS message: %s", msg_type)
 
+    @staticmethod
+    def web_root() -> Path:
+        return Path(__file__).parent / "web"
+
+    def frontend_index_path(self) -> Path:
+        web_root = self.web_root()
+        app_index = web_root / "app" / "index.html"
+        if app_index.exists():
+            return app_index
+        return web_root / "index.html"
+
     async def index_handler(self, _: web.Request) -> web.FileResponse:
-        web_root = Path(__file__).parent / "web"
-        return web.FileResponse(web_root / "index.html")
+        return web.FileResponse(self.frontend_index_path())
+
+    async def console_handler(self, _: web.Request) -> web.FileResponse:
+        return web.FileResponse(self.frontend_index_path())
+
+    async def aar_handler(self, _: web.Request) -> web.FileResponse:
+        return web.FileResponse(self.frontend_index_path())
+
+    async def about_handler(self, _: web.Request) -> web.FileResponse:
+        return web.FileResponse(self.frontend_index_path())
 
     async def view3d_handler(self, _: web.Request) -> web.FileResponse:
-        web_root = Path(__file__).parent / "web"
+        web_root = self.web_root()
         return web.FileResponse(web_root / "view3d.html")
+
+    async def api_health_handler(self, _: web.Request) -> web.Response:
+        payload = {
+            "status": "ok",
+            "server_time_ms": self.now_ms(),
+            "version": SERVER_VERSION,
+        }
+        return web.json_response(payload)
+
+    async def api_status_handler(self, _: web.Request) -> web.Response:
+        now_ms = self.now_ms()
+        world_state = self.world_state_payload(now_ms)
+        players = world_state.get("players", [])
+        online = sum(1 for player in players if player.get("online"))
+        payload = {
+            "status": "ok",
+            "system": "ok",
+            "version": SERVER_VERSION,
+            "uptime_ms": max(0, now_ms - self.server_started_ms),
+            "players_online": online,
+            "players_total": len(players),
+            "ws_clients": len(self.ws_clients),
+            "recording": self.recording_payload(),
+            "config": self.config.to_dict(),
+        }
+        return web.json_response(payload)
+
+    async def api_recording_start_handler(self, _: web.Request) -> web.Response:
+        payload = self.start_recording(self.now_ms())
+        await self.broadcast_world_state()
+        return web.json_response(payload)
+
+    async def api_recording_stop_handler(self, _: web.Request) -> web.Response:
+        payload = self.stop_recording()
+        await self.broadcast_world_state()
+        return web.json_response(payload)
+
+    async def api_aar_list_handler(self, _: web.Request) -> web.Response:
+        return web.json_response(
+            {
+                "status": "not_enabled",
+                "sessions": [],
+                "message": "AAR listing is not enabled in this build.",
+            }
+        )
+
+    async def api_replay_start_handler(self, _: web.Request) -> web.Response:
+        return web.json_response(
+            {
+                "status": "not_enabled",
+                "message": "Replay start is not enabled in this build.",
+            },
+            status=501,
+        )
+
+    async def api_replay_stop_handler(self, _: web.Request) -> web.Response:
+        return web.json_response(
+            {
+                "status": "not_enabled",
+                "message": "Replay stop is not enabled in this build.",
+            },
+            status=501,
+        )
+
+    async def api_sim_add_handler(self, _: web.Request) -> web.Response:
+        player_id = self.add_sim_player()
+        await self.broadcast_world_state()
+        return web.json_response(
+            {
+                "ok": player_id is not None,
+                "player_id": player_id,
+                "message": "added" if player_id is not None else "no_available_slot",
+            }
+        )
+
+    async def api_sim_remove_handler(self, _: web.Request) -> web.Response:
+        player_id = self.remove_sim_player()
+        await self.broadcast_world_state()
+        return web.json_response(
+            {
+                "ok": player_id is not None,
+                "player_id": player_id,
+                "message": "removed" if player_id is not None else "no_sim_player_to_remove",
+            }
+        )
 
     async def on_startup(self, app: web.Application) -> None:
         loop = asyncio.get_running_loop()
@@ -279,11 +474,28 @@ def build_app(coordinator: MatchCoordinator, host: str, udp_port: int) -> web.Ap
     app["udp_port"] = udp_port
 
     web_root = Path(__file__).parent / "web"
+    app_root = web_root / "app"
 
     app.router.add_get("/", coordinator.index_handler)
+    app.router.add_get("/console", coordinator.console_handler)
+    app.router.add_get("/aar", coordinator.aar_handler)
+    app.router.add_get("/about", coordinator.about_handler)
     app.router.add_get("/3d", coordinator.view3d_handler)
     app.router.add_get("/ws", coordinator.ws_handler)
+
+    app.router.add_get("/api/health", coordinator.api_health_handler)
+    app.router.add_get("/api/status", coordinator.api_status_handler)
+    app.router.add_post("/api/recording/start", coordinator.api_recording_start_handler)
+    app.router.add_post("/api/recording/stop", coordinator.api_recording_stop_handler)
+    app.router.add_get("/api/aar/list", coordinator.api_aar_list_handler)
+    app.router.add_post("/api/replay/start", coordinator.api_replay_start_handler)
+    app.router.add_post("/api/replay/stop", coordinator.api_replay_stop_handler)
+    app.router.add_post("/api/sim/add", coordinator.api_sim_add_handler)
+    app.router.add_post("/api/sim/remove", coordinator.api_sim_remove_handler)
+
     app.router.add_static("/static/", web_root, show_index=False)
+    if app_root.exists():
+        app.router.add_static("/app/", app_root, show_index=False)
 
     app.on_startup.append(coordinator.on_startup)
     app.on_cleanup.append(coordinator.on_cleanup)

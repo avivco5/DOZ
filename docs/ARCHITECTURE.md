@@ -69,6 +69,7 @@ Node quality score (0-100):
 Failsafe rules:
 - Server requires `quality >= quality_threshold` for a player to generate alerts (default 35 for IMU-only bring-up).
 - Offline timeout marks player offline after 2000 ms without telemetry.
+- Optional `sim_players_emulate_real=true` keeps server-simulated players online with synthetic heartbeat timestamps.
 - Invalid packets (magic/version/CRC mismatch) are rejected.
 - Alert hysteresis avoids flicker:
   - On: within base cone/range.

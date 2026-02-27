@@ -68,6 +68,33 @@ class PlayerRegistry:
         self.world.ensure_player(player_id)
         return player
 
+    def next_available_player_id(self) -> int | None:
+        for candidate in range(1, 256):
+            if candidate not in self.players:
+                return candidate
+        return None
+
+    def add_sim_player(self) -> int | None:
+        player_id = self.next_available_player_id()
+        if player_id is None:
+            return None
+        self.ensure_player(player_id)
+        return player_id
+
+    def remove_sim_player(self) -> int | None:
+        removable_ids = [
+            player_id
+            for player_id, player in self.players.items()
+            if player.addr is None
+        ]
+        if not removable_ids:
+            return None
+
+        player_id = max(removable_ids)
+        self.players.pop(player_id, None)
+        self.world.remove_player(player_id)
+        return player_id
+
     def ingest_telemetry(self, pkt: TelemetryPacket, addr: tuple[str, int], now_ms: int) -> None:
         player = self.ensure_player(pkt.player_id)
         prev_seq = player.seq
@@ -115,6 +142,14 @@ class PlayerRegistry:
         timeout = self.config.offline_timeout_ms
         for player in self.players.values():
             was_online = player.online
+            if self.config.sim_players_emulate_real and player.addr is None:
+                player.last_seen_ms = now_ms
+                player.online = True
+                if (player.connected_since_ms is None) or (not was_online):
+                    player.connected_since_ms = now_ms
+                if self.config.world_update_hz > 0.0:
+                    player.packet_rate_hz = self.config.world_update_hz
+                continue
             if player.last_seen_ms is None:
                 player.online = False
                 player.connected_since_ms = None

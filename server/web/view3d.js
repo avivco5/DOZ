@@ -449,26 +449,31 @@ function rebuildArena() {
 function buildPlayerLabel(text, subtext, color = "#dcecf0") {
   const labelCanvas = document.createElement("canvas");
   labelCanvas.width = 256;
-  labelCanvas.height = 106;
+  labelCanvas.height = 128;
   const c2d = labelCanvas.getContext("2d");
   c2d.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
   c2d.fillStyle = "rgba(8,15,19,0.78)";
   c2d.strokeStyle = "rgba(124,176,194,0.45)";
   c2d.lineWidth = 2;
-  c2d.beginPath();
-  c2d.roundRect(5, 7, 246, 92, 8);
-  c2d.fill();
-  c2d.stroke();
+  if (typeof c2d.roundRect === "function") {
+    c2d.beginPath();
+    c2d.roundRect(5, 10, 246, 106, 8);
+    c2d.fill();
+    c2d.stroke();
+  } else {
+    c2d.fillRect(5, 10, 246, 106);
+    c2d.strokeRect(5, 10, 246, 106);
+  }
 
   c2d.fillStyle = color;
   c2d.textAlign = "center";
   c2d.font = "700 24px Bahnschrift, Segoe UI, sans-serif";
-  c2d.fillText(text, 128, 36);
+  c2d.fillText(text, 128, 42);
   c2d.fillStyle = "#9eb8bf";
   c2d.font = "600 16px Cascadia Mono, Consolas, monospace";
-  c2d.fillText(subtext, 128, 62);
+  c2d.fillText(subtext, 128, 74);
   c2d.font = "500 14px Cascadia Mono, Consolas, monospace";
-  c2d.fillText("GPS --", 128, 86);
+  c2d.fillText("GPS --", 128, 102);
 
   return labelCanvas;
 }
@@ -547,6 +552,9 @@ function createPlayerMesh(player, colorHex) {
   const labelCanvas = buildPlayerLabel(`P${player.id}`, "AZ 0deg");
   const labelTexture = new THREE.CanvasTexture(labelCanvas);
   labelTexture.colorSpace = THREE.SRGBColorSpace;
+  labelTexture.generateMipmaps = false;
+  labelTexture.minFilter = THREE.LinearFilter;
+  labelTexture.magFilter = THREE.LinearFilter;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture, transparent: true, depthWrite: false }));
   sprite.scale.set(5.6, 2.35, 1);
   sprite.position.set(0, 3.15, 0);
@@ -576,24 +584,29 @@ function updatePlayerLabel(meshData, player, isAlert) {
   c2d.fillStyle = isAlert ? "rgba(47,16,16,0.82)" : "rgba(8,15,19,0.78)";
   c2d.strokeStyle = isAlert ? "rgba(255,116,98,0.62)" : "rgba(124,176,194,0.45)";
   c2d.lineWidth = 2;
-  c2d.beginPath();
-  c2d.roundRect(5, 7, w - 10, h - 14, 8);
-  c2d.fill();
-  c2d.stroke();
+  if (typeof c2d.roundRect === "function") {
+    c2d.beginPath();
+    c2d.roundRect(5, 10, w - 10, h - 20, 8);
+    c2d.fill();
+    c2d.stroke();
+  } else {
+    c2d.fillRect(5, 10, w - 10, h - 20);
+    c2d.strokeRect(5, 10, w - 10, h - 20);
+  }
 
   c2d.fillStyle = isAlert ? "#ff9a8f" : "#8bd9e8";
   c2d.textAlign = "center";
   c2d.font = "700 24px Bahnschrift, Segoe UI, sans-serif";
-  c2d.fillText(`P${player.id}`, w / 2, 36);
+  c2d.fillText(`P${player.id}`, w / 2, 42);
 
   c2d.fillStyle = "#c3d4da";
   c2d.font = "600 16px Cascadia Mono, Consolas, monospace";
-  c2d.fillText(`AZ ${Math.round(player.yaw_deg)}deg`, w / 2, 62);
+  c2d.fillText(`AZ ${Math.round(player.yaw_deg)}deg`, w / 2, 74);
   c2d.font = "500 14px Cascadia Mono, Consolas, monospace";
   if (player.gps_quality > 0 && player.gps_lat_deg != null && player.gps_lon_deg != null) {
-    c2d.fillText(`${player.gps_lat_deg.toFixed(5)}, ${player.gps_lon_deg.toFixed(5)}`, w / 2, 86);
+    c2d.fillText(`${player.gps_lat_deg.toFixed(5)}, ${player.gps_lon_deg.toFixed(5)}`, w / 2, 102);
   } else {
-    c2d.fillText("GPS --", w / 2, 86);
+    c2d.fillText("GPS --", w / 2, 102);
   }
 
   meshData.labelTexture.needsUpdate = true;

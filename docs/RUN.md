@@ -25,6 +25,22 @@ Expected log lines:
 - Browser: `http://127.0.0.1:8080`
 - You should see moving players even with no nodes connected.
 
+### 3b) Run new frontend in development mode (optional)
+From repository root:
+```bash
+cd webapp
+npm install
+npm run dev
+```
+Then open: `http://127.0.0.1:5173/console`
+
+Notes:
+- The Vite dev server proxies `/ws` and `/api` to `http://127.0.0.1:8080`.
+- Use mock mode with:
+```bash
+VITE_MOCK=1 npm run dev
+```
+
 ### 4) Run simulator nodes
 In a second terminal:
 ```bash
@@ -45,6 +61,19 @@ python -m tools.sim_node --player-ids 1,2 --send-pos --send-gps
 source DOZ/bin/activate
 pytest -q
 ```
+
+### 6) Frontend tests/lint/build
+```bash
+cd webapp
+npm run test
+npm run lint
+npm run build
+```
+
+Build output is generated to `server/web/app/` and served by the backend routes:
+- `/console`
+- `/aar`
+- `/about`
 
 ## Windows (PowerShell)
 ### 1) Create venv and install dependencies
@@ -125,6 +154,7 @@ MPU6050 quick-test defaults in this repo:
 - Frequent offline status:
   - Verify telemetry rate near 20 Hz.
   - Increase `offline_timeout_ms` if needed.
+  - For server-only simulated players, enable `sim_players_emulate_real` from the Control Surface.
 - Alerts always off:
   - Raise cone angle or max range in UI.
   - Ensure player quality is above threshold.
